@@ -6,7 +6,7 @@ from train_model import *
 
 
 class PrepareData:
-    def __init__(self, args):
+    def __init__(self, args, TS=None):
         # init all the parameters here
         # arg contains parameter settings
         self.args = args
@@ -18,9 +18,10 @@ class PrepareData:
         self.original_order = ['Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7', 'CP5', 'CP1', 'P3', 'P7', 'PO3',
                                'O1', 'Oz', 'Pz', 'Fp2', 'AF4', 'Fz', 'F4', 'F8', 'FC6', 'FC2', 'Cz', 'C4', 'T8', 'CP6',
                                'CP2', 'P4', 'P8', 'PO4', 'O2']
+        self.TS = TS
+        if self.TS is None:
+            self.TS = ['T7', 'T8']
 
-        self.TS = ['Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7', 'CP5', 'CP1', 'P3', 'P7', 'PO3','O1',
-                   'Fp2', 'AF4', 'F4', 'F8', 'FC6', 'FC2', 'C4', 'T8', 'CP6', 'CP2', 'P4', 'P8', 'PO4', 'O2']
         self.graph_type = args.graph_type
 
     def run(self, subject_list, split=False, expand=True, feature=False):

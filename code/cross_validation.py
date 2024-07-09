@@ -8,6 +8,8 @@ import os.path as osp
 from train_model import *
 from utils import Averager
 from sklearn.model_selection import KFold
+from tqdm import tqdm
+from functools import reduce
 
 ROOT = os.getcwd()
 
@@ -51,6 +53,26 @@ class CrossValidation:
         label = np.array(dataset['label'])
         print('>>> Data:{} Label:{}'.format(data.shape, label.shape))
         return data, label
+
+    def load_all(self):
+        """
+        load data for all sub
+        :param sub: which subject's data to load
+        :return: data and label
+        """
+        save_path = os.getcwd()
+        data_type = 'data_{}_{}_{}'.format(self.args.data_format, self.args.dataset, self.args.label_type)
+        datas, labels = [], []
+        for sub in range(1, 33):
+            sub_code = 'sub' + str(sub) + '.hdf'
+            path = osp.join(save_path, data_type, sub_code)
+            dataset = h5py.File(path, 'r')
+            datas.append(np.array(dataset['data']))
+            labels.append(np.array(dataset['label']))
+            print('>>> Data:{} Label:{}'.format(datas[-1].shape, labels[-1].shape))
+        datas = reduce(lambda x, y: np.concatenate((x, y), axis=0), datas)
+        labels = reduce(lambda x, y: np.concatenate((x, y), axis=0), labels)
+        return datas, labels
 
     def prepare_data(self, idx_train, idx_test, data, label):
         """
@@ -151,8 +173,9 @@ class CrossValidation:
 
         tta_trial = []   # for trial-wise evaluation
         ttf_trial = []   # for trial-wise evaluation
+        contributions, max_contributions, total = [0 for _ in range(28)], [0 for _ in range(28)], 0
 
-        for sub in subject:
+        for sub in tqdm(subject):
             data, label = self.load_per_subject(sub)
             va = Averager()
             va_val = Averager()
@@ -171,9 +194,9 @@ class CrossValidation:
 
                 if reproduce:
                     # to reproduce the reported ACC
-                    acc_test, pred, act = test(args=self.args, data=data_test, label=label_test,
+                    acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
                                                reproduce=self.args.reproduce,
-                                               subject=sub, fold=idx_fold)
+                                               subject=sub, fold=idx_fold, contributions=contributions, max_contributions=max_contributions, total=total)
                     acc_val = 0
                 else:
                     # to train new models
@@ -190,7 +213,7 @@ class CrossValidation:
                                     subject=sub,
                                     fold=idx_fold)
                     # test the model on testing data
-                    acc_test, pred, act = test(args=self.args, data=data_test, label=label_test,
+                    acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
                                                reproduce=self.args.reproduce,
                                                subject=sub, fold=idx_fold)
 
@@ -269,6 +292,54 @@ class CrossValidation:
                 label = 0
             pred_vote.append(label)
         return act_trial, pred_vote
+
+    def compare(self, subject=[], fold=10):
+        """
+        this function achieves n-fold cross-validation
+        :param subject: how many subject to load
+        :param fold: how many fold
+        """
+        # Train and evaluate the model subject by subject
+
+
+        tta = []  # total test accuracy
+        ttf = []  # total test f1
+
+        contributions, max_contributions, total = [0 for _ in range(28)], [0 for _ in range(28)], 0
+        accuracies = []
+
+
+        for sub in tqdm(subject):
+            data, label = self.load_per_subject(sub)
+            va = Averager()
+            preds, acts = [], []
+            kf = KFold(n_splits=fold, shuffle=True)
+            # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
+            for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
+                data_train, label_train, data_test, label_test = self.prepare_data(
+                    idx_train=index_train, idx_test=index_test, data=data, label=label)
+
+                # to reproduce the reported ACC
+                acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
+                                           reproduce=self.args.reproduce,
+                                           subject=sub, fold=idx_fold, contributions=contributions, max_contributions=max_contributions, total=total)
+                accuracies.append(acc_test)
+                va.add(acc_test)
+                preds.extend(pred)
+                acts.extend(act)
+
+            acc, f1, _ = get_metrics(y_pred=preds, y_true=acts)
+
+            tta.append(acc)
+            ttf.append(f1)
+
+        # prepare final report
+        mACC = np.mean(tta)
+        std = np.std(tta)
+
+        print('Final: test mean ACC:{} std:{}'.format(mACC, std))
+
+        return mACC, std, accuracies
 
 
 

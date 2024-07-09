@@ -5,13 +5,14 @@ from networks import TSception
 from eeg_dataset import *
 from torch.utils.data import DataLoader
 from sklearn.metrics import confusion_matrix, accuracy_score, f1_score
-
+import numpy as np
+import torch
 
 def set_gpu(x):
     torch.set_num_threads(1)
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = x
-    print('using gpu:', x)
+    #print('using gpu:', x)
 
 
 def seed_all(seed):
@@ -71,6 +72,9 @@ def get_model(args):
             num_classes=args.num_class, input_size=args.input_shape,
             sampling_rate=args.sampling_rate, num_T=args.T, num_S=args.T,
             hidden=args.hidden, dropout_rate=args.dropout)
+        if args.load_model:
+            model.load_state_dict(torch.load(args.load_path.format(args.label_type)))
+            print("Previous model loaded.")
 
     return model
 
@@ -135,12 +139,24 @@ def generate_TS_channel_order(original_order: list):
     return chan_no_duplicate[0::2] + chan_no_duplicate[1::2]
 
 
+def get_contribution(attributions, contribution, max_contribution, total: int):
+    for attribution in attributions:
+        for i, channel in enumerate(attribution[0]):
+            max_contribution[i] = float(max(max_contribution[i], max(torch.abs(channel))))
+            contribution[i] += float(torch.sum(torch.abs(channel)))
+            if i == 0:
+                total += len(channel)
+    return total
+
+
+
 if __name__=="__main__":
     # example of using generate_TS_channel_order()
     original_order = ['Fp1', 'AF3', 'F3', 'F7', 'FC5', 'FC1', 'C3', 'T7', 'CP5', 'CP1', 'P3', 'P7', 'PO3',
                       'O1', 'Oz', 'Pz', 'Fp2', 'AF4', 'Fz', 'F4', 'F8', 'FC6', 'FC2', 'Cz', 'C4', 'T8', 'CP6',
                       'CP2', 'P4', 'P8', 'PO4', 'O2']
     TS = generate_TS_channel_order(original_order)
+    print(TS)
     print('done')
 
 

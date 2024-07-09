@@ -1,10 +1,15 @@
+import torch.backends.mps
 
 from utils import *
 import copy
 import torch.nn as nn
+from captum.attr import IntegratedGradients
+import torch
+
+torch.set_printoptions(profile="full")
 
 CUDA = torch.cuda.is_available()
-
+MPS = torch.backends.mps.is_available()
 
 def train_one_epoch(data_loader, net, loss_fn, optimizer):
     net.train()
@@ -12,7 +17,9 @@ def train_one_epoch(data_loader, net, loss_fn, optimizer):
     pred_train = []
     act_train = []
     for i, (x_batch, y_batch) in enumerate(data_loader):
-        if CUDA:
+        if MPS:
+            x_batch, y_batch = x_batch.to('mps'), y_batch.to('mps')
+        elif CUDA:
             x_batch, y_batch = x_batch.cuda(), y_batch.cuda()
 
         out = net(x_batch)
@@ -27,15 +34,30 @@ def train_one_epoch(data_loader, net, loss_fn, optimizer):
     return tl.item(), pred_train, act_train
 
 
-def predict(data_loader, net, loss_fn):
+def predict(data_loader, net, loss_fn, contributions=None, max_contributions=None, enable_contribution=False, total=0):
     net.eval()
     pred_val = []
     act_val = []
     vl = Averager()
+    if enable_contribution:
+        ig = IntegratedGradients(net)
     with torch.no_grad():
         for i, (x_batch, y_batch) in enumerate(data_loader):
-            if CUDA:
+            #ig = IntegratedGradients(net.to('cpu'))
+            #attributions, delta = ig.attribute(x_batch.detach().clone().to('cpu'),
+                                               #target=y_batch.detach().clone().to('cpu'), return_convergence_delta=True)
+
+            if MPS:
+                x_batch, y_batch, net = x_batch.to('mps'), y_batch.to('mps'), net.to('mps')
+            elif CUDA:
                 x_batch, y_batch = x_batch.cuda(), y_batch.cuda()
+            if enable_contribution:
+                attributions, delta = ig.attribute(x_batch,
+                                               target=y_batch, return_convergence_delta=True)
+                total = get_contribution(attributions, contributions, max_contributions, total)
+                print(total)
+                print("Contributions\n", [contribution / total for contribution in contributions])
+                print("Max contribution\n", max_contributions)
 
             out = net(x_batch)
             loss = loss_fn(out, y_batch)
@@ -43,7 +65,7 @@ def predict(data_loader, net, loss_fn):
             vl.add(loss.item())
             pred_val.extend(pred.data.tolist())
             act_val.extend(y_batch.data.tolist())
-    return vl.item(), pred_val, act_val
+    return vl.item(), pred_val, act_val, total
 
 
 def set_up(args):
@@ -66,7 +88,9 @@ def train(args, data_train, label_train, data_val, label_val, subject, fold):
     para = get_trainable_parameter_num(model)
     print('Model {} size:{}'.format(args.model, para))
 
-    if CUDA:
+    if MPS:
+        model = model.to('mps')
+    elif CUDA:
         model = model.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
@@ -97,7 +121,7 @@ def train(args, data_train, label_train, data_val, label_val, subject, fold):
         print('epoch {}, loss={:.4f} acc={:.4f} f1={:.4f}'
               .format(epoch, loss_train, acc_train, f1_train))
 
-        loss_val, pred_val, act_val = predict(
+        loss_val, pred_val, act_val, total = predict(
             data_loader=val_loader, net=model, loss_fn=loss_fn
         )
         acc_val, f1_val, _ = get_metrics(y_pred=pred_val, y_true=act_val)
@@ -107,7 +131,7 @@ def train(args, data_train, label_train, data_val, label_val, subject, fold):
 
         if acc_val > trlog['max_acc']:
             trlog['max_acc'] = acc_val
-            save_model('max-acc')
+            save_model('max-acc{}'.format(args.label_type))
 
             if args.save_model:
                 # save model here for reproduce
@@ -132,16 +156,20 @@ def train(args, data_train, label_train, data_val, label_val, subject, fold):
     return trlog['max_acc']
 
 
-def test(args, data, label, reproduce, subject, fold):
+def test(args, data, label, reproduce, subject, fold, contributions=None, max_contributions=None, total=0, model=None):
     seed_all(args.random_seed)
     set_up(args)
 
     test_loader = get_dataloader(data, label, args.batch_size, False)
 
-    model = get_model(args)
-    if CUDA:
-        model = model.cuda()
+    if model is None:
+        model = get_model(args)
+        if MPS:
+            model = model.to('mps')
+        elif CUDA:
+            model = model.cuda()
     loss_fn = nn.CrossEntropyLoss()
+
 
     if reproduce:
         model_name_reproduce = 'sub' + str(subject) + '_fold' + str(fold) + '.pth'
@@ -149,14 +177,14 @@ def test(args, data, label, reproduce, subject, fold):
         save_path = osp.join(args.save_path, data_type)
         ensure_path(save_path)
         model_name_reproduce = osp.join(save_path, model_name_reproduce)
-        model.load_state_dict(torch.load(model_name_reproduce))
+        model.load_state_dict(torch.load(model_name_reproduce, map_location=torch.device('mps')))
     else:
-        model.load_state_dict(torch.load(args.load_path))
-    loss, pred, act = predict(
-        data_loader=test_loader, net=model, loss_fn=loss_fn
+        model.load_state_dict(torch.load(args.load_path.format(args.label_type)))
+    loss, pred, act, total = predict(
+        data_loader=test_loader, net=model, loss_fn=loss_fn, contributions=contributions, max_contributions=max_contributions, enable_contribution=args.contribution, total=total
     )
     acc, f1, cm = get_metrics(y_pred=pred, y_true=act)
     print('>>> Test:  loss={:.4f} acc={:.4f} f1={:.4f}'.format(loss, acc, f1))
-    return acc, pred, act
+    return acc, pred, act, total
 
 

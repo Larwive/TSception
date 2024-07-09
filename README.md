@@ -1,4 +1,5 @@
-This forked version aims at improving the training process experience, such as adding a subject to start training from.
+This forked version aims at improving the training process experience, such as adding a subject to start training from, and support of mps backend for Apple Silicon chips.
+Note that you might need to edit the captum package if you intend to compute the attributions of inputs. 
 No major modification is expected at the moment.
 
 Original readme:
