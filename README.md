@@ -1,3 +1,7 @@
+This forked version aims at improving the training process experience, such as adding a subject to start training from.
+No major modification is expected at the moment.
+
+Original readme:
 # TSception
 This is the PyTorch implementation of TSception V2 using [DEAP](http://www.eecs.qmul.ac.uk/mmv/datasets/deap/) dataset in our paper:
 
