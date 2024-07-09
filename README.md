@@ -2,6 +2,8 @@ This forked version aims at improving the training process experience, such as a
 Note that you might need to edit the captum package if you intend to compute the attributions of inputs. 
 No major modification is expected at the moment.
 
+Note that `requirements.txt` is surely not up to date.
+
 Original readme:
 # TSception
 This is the PyTorch implementation of TSception V2 using [DEAP](http://www.eecs.qmul.ac.uk/mmv/datasets/deap/) dataset in our paper:
