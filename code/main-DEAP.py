@@ -30,6 +30,8 @@ if __name__ == '__main__':
     parser.add_argument('--save-model', type=bool, default=True)
     parser.add_argument('--load-model', type=bool, default=False)
     parser.add_argument('--contribution', action='store_true')
+    parser.add_argument('--load-all', action='store_true')
+    parser.add_argument('--folds', type=int, default=10)
     ######## Model Parameters ########
     parser.add_argument('--model', type=str, default='TSception')
     parser.add_argument('--T', type=int, default=15)
@@ -44,8 +46,8 @@ if __name__ == '__main__':
     sub_to_run = np.arange(args.start_subject, args.start_subject+args.subjects)
 
     pd = PrepareData(args)
-    pd.run(sub_to_run, split=True, feature=False, expand=True)
+    pd.run(sub_to_run, split=True, feature=False, expand=True, load_all=args.load_all)
 
     cv = CrossValidation(args)
     seed_all(args.random_seed)
-    cv.n_fold_CV(subject=sub_to_run, fold=10, reproduce=args.reproduce)  # To do leave one trial out please set fold=40
+    cv.n_fold_CV(subject=sub_to_run, fold=args.folds, reproduce=args.reproduce, load_all=args.load_all)  # To do leave one trial out please set fold=40

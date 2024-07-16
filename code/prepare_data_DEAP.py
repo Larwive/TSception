@@ -20,11 +20,12 @@ class PrepareData:
                                'CP2', 'P4', 'P8', 'PO4', 'O2']
         self.TS = TS
         if self.TS is None:
-            self.TS = ['T7', 'T8']
+            self.TS = ['Fp1',
+         'Fp2']
 
         self.graph_type = args.graph_type
 
-    def run(self, subject_list, split=False, expand=True, feature=False):
+    def run(self, subject_list, split=False, expand=True, feature=False, load_all=False):
         """
         Parameters
         ----------
@@ -37,6 +38,8 @@ class PrepareData:
         -------
         The processed data will be saved './data_<data_format>_<dataset>_<label_type>/sub0.hdf'
         """
+        if load_all:
+            subject_list = np.arange(32)
         for sub in subject_list:
             data_, label_ = self.load_data_per_subject(sub)
             # select label type here
@@ -50,9 +53,9 @@ class PrepareData:
             if expand:
                 # expand one dimension for deep learning(CNNs)
                 data_ = np.expand_dims(data_, axis=-3)
-            print('Data and label prepared for sub{}!'.format(sub))
-            print('data:' + str(data_.shape) + ' label:' + str(label_.shape))
-            print('----------------------')
+            #print('Data and label prepared for sub{}!'.format(sub))
+            #print('data:' + str(data_.shape) + ' label:' + str(label_.shape))
+            #print('----------------------')
             self.save(data_, label_, sub)
 
     def load_data_per_subject(self, sub):
@@ -80,7 +83,7 @@ class PrepareData:
         #   label: 40 x 4
         # reorder the EEG channel to build the local-global graphs
         data = self.reorder_channel(data=data, graph=self.graph_type)
-        print('data:' + str(data.shape) + ' label:' + str(label.shape))
+        #print('data:' + str(data.shape) + ' label:' + str(label.shape))
         return data, label
 
     def reorder_channel(self, data, graph):
@@ -126,7 +129,7 @@ class PrepareData:
         if self.args.num_class == 2:
             label = np.where(label <= 5, 0, label)
             label = np.where(label > 5, 1, label)
-            print('Binary label generated!')
+            #print('Binary label generated!')
         return label
 
     def save(self, data, label, sub):
@@ -182,8 +185,8 @@ class PrepareData:
             data_split.append(data[:, :, (i * step):(i * step + data_segment)])
         data_split_array = np.stack(data_split, axis=1)
         label = np.stack([np.repeat(label[i], int(number_segment + 1)) for i in range(len(label))], axis=0)
-        print("The data and label are split: Data shape:" + str(data_split_array.shape) + " Label:" + str(
-            label.shape))
+        #print("The data and label are split: Data shape:" + str(data_split_array.shape) + " Label:" + str(
+            #label.shape))
         data = data_split_array
         assert len(data) == len(label)
         return data, label

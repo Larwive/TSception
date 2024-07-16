@@ -184,7 +184,8 @@ def test(args, data, label, reproduce, subject, fold, contributions=None, max_co
         data_loader=test_loader, net=model, loss_fn=loss_fn, contributions=contributions, max_contributions=max_contributions, enable_contribution=args.contribution, total=total
     )
     acc, f1, cm = get_metrics(y_pred=pred, y_true=act)
-    print('>>> Test:  loss={:.4f} acc={:.4f} f1={:.4f}'.format(loss, acc, f1))
+    if not reproduce:
+        print('>>> Test:  loss={:.4f} acc={:.4f} f1={:.4f}'.format(loss, acc, f1))
     return acc, pred, act, total
 
 

@@ -51,7 +51,7 @@ class CrossValidation:
         dataset = h5py.File(path, 'r')
         data = np.array(dataset['data'])
         label = np.array(dataset['label'])
-        print('>>> Data:{} Label:{}'.format(data.shape, label.shape))
+        #print('>>> Data:{} Label:{}'.format(data.shape, label.shape))
         return data, label
 
     def load_all(self):
@@ -63,18 +63,18 @@ class CrossValidation:
         save_path = os.getcwd()
         data_type = 'data_{}_{}_{}'.format(self.args.data_format, self.args.dataset, self.args.label_type)
         datas, labels = [], []
-        for sub in range(1, 33):
+        for sub in range(32):
             sub_code = 'sub' + str(sub) + '.hdf'
             path = osp.join(save_path, data_type, sub_code)
             dataset = h5py.File(path, 'r')
             datas.append(np.array(dataset['data']))
             labels.append(np.array(dataset['label']))
-            print('>>> Data:{} Label:{}'.format(datas[-1].shape, labels[-1].shape))
+            #print('>>> Data:{} Label:{}'.format(datas[-1].shape, labels[-1].shape))
         datas = reduce(lambda x, y: np.concatenate((x, y), axis=0), datas)
         labels = reduce(lambda x, y: np.concatenate((x, y), axis=0), labels)
         return datas, labels
 
-    def prepare_data(self, idx_train, idx_test, data, label):
+    def prepare_data(self, idx_train, idx_test, data, label, no_folding=False):
         """
         1. get training and testing data according to the index
         2. numpy.array-->torch.tensor
@@ -84,18 +84,31 @@ class CrossValidation:
         :param label: (trial, segments,)
         :return: data and label
         """
-        data_train = data[idx_train]
-        label_train = label[idx_train]
-        data_test = data[idx_test]
-        label_test = label[idx_test]
+        if not no_folding:
+            data_train = data[idx_train]
+            label_train = label[idx_train]
+            data_test = data[idx_test]
+            label_test = label[idx_test]
 
-        data_train = np.concatenate(data_train, axis=0)
-        label_train = np.concatenate(label_train, axis=0)
+            data_train = np.concatenate(data_train, axis=0)
+            label_train = np.concatenate(label_train, axis=0)
 
-        # the testing data do not need to be concatenated, when doing leave-one-trial-out
-        if len(data_test.shape)>4:
-            data_test = np.concatenate(data_test, axis=0)
-            label_test = np.concatenate(label_test, axis=0)
+            # the testing data do not need to be concatenated, when doing leave-one-trial-out
+            if len(data_test.shape)>4:
+                data_test = np.concatenate(data_test, axis=0)
+                label_test = np.concatenate(label_test, axis=0)
+        else:
+            data_train = data
+            label_train = label
+            data_test = data
+            label_test = label
+
+            data_train = np.concatenate(data_train, axis=0)
+            label_train = np.concatenate(label_train, axis=0)
+
+            if len(data_test.shape)>4:
+                data_test = np.concatenate(data_test, axis=0)
+                label_test = np.concatenate(label_test, axis=0)
 
         data_train, data_test = self.normalize(train=data_train, test=data_test)
 
@@ -115,8 +128,6 @@ class CrossValidation:
         :return: normalized training and testing data
         """
         # data: sample x 1 x channel x data
-        mean = 0
-        std = 0
         for channel in range(train.shape[2]):
             mean = np.mean(train[:, :, channel, :])
             std = np.std(train[:, :, channel, :])
@@ -160,7 +171,7 @@ class CrossValidation:
 
         return train, train_label, val, val_label
 
-    def n_fold_CV(self, subject=[], fold=10, reproduce=False):
+    def n_fold_CV(self, subject=[], fold=10, reproduce=False, load_all=False):
         """
         this function achieves n-fold cross-validation
         :param subject: how many subject to load
@@ -176,7 +187,10 @@ class CrossValidation:
         contributions, max_contributions, total = [0 for _ in range(28)], [0 for _ in range(28)], 0
 
         for sub in tqdm(subject):
-            data, label = self.load_per_subject(sub)
+            if load_all:
+                data, label = self.load_all()
+            else:
+                data, label = self.load_per_subject(sub)
             va = Averager()
             va_val = Averager()
             preds, acts = [], []
@@ -293,7 +307,7 @@ class CrossValidation:
             pred_vote.append(label)
         return act_trial, pred_vote
 
-    def compare(self, subject=[], fold=10):
+    def compare(self, subject=[], fold=10, folding=True, data_test=None, label_test=None):
         """
         this function achieves n-fold cross-validation
         :param subject: how many subject to load
@@ -308,38 +322,64 @@ class CrossValidation:
         contributions, max_contributions, total = [0 for _ in range(28)], [0 for _ in range(28)], 0
         accuracies = []
 
+        if folding:
+            for sub in subject:
+                data, label = self.load_per_subject(sub)
+                va = Averager()
+                preds, acts = [], []
+                kf = KFold(n_splits=fold, shuffle=True)
+                # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
+                for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
+                    data_train, label_train, data_test, label_test = self.prepare_data(
+                        idx_train=index_train, idx_test=index_test, data=data, label=label)
 
-        for sub in tqdm(subject):
-            data, label = self.load_per_subject(sub)
-            va = Averager()
-            preds, acts = [], []
-            kf = KFold(n_splits=fold, shuffle=True)
-            # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
-            for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
-                data_train, label_train, data_test, label_test = self.prepare_data(
-                    idx_train=index_train, idx_test=index_test, data=data, label=label)
+                    # to reproduce the reported ACC
+                    acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
+                                               reproduce=self.args.reproduce,
+                                               subject=sub, fold=idx_fold, contributions=contributions, max_contributions=max_contributions, total=total)
+                    accuracies.append(acc_test)
+                    va.add(acc_test)
+                    preds.extend(pred)
+                    acts.extend(act)
 
-                # to reproduce the reported ACC
-                acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
-                                           reproduce=self.args.reproduce,
-                                           subject=sub, fold=idx_fold, contributions=contributions, max_contributions=max_contributions, total=total)
-                accuracies.append(acc_test)
-                va.add(acc_test)
-                preds.extend(pred)
-                acts.extend(act)
+                acc, f1, _ = get_metrics(y_pred=preds, y_true=acts)
 
-            acc, f1, _ = get_metrics(y_pred=preds, y_true=acts)
+                tta.append(acc)
+                ttf.append(f1)
+        else:
+            if data_test is None:
+                data, label = self.load_all()
 
-            tta.append(acc)
-            ttf.append(f1)
+            for sub in subject:
+                va = Averager()
+                preds, acts = [], []
+                # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
+                kf = KFold(n_splits=fold, shuffle=True)
+                for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
+                    data_train, label_train, data_test, label_test = self.prepare_data(
+                        idx_train=index_train, idx_test=index_test, data=data, label=label, no_folding=True)
+                    # to reproduce the reported ACC
+                    acc_test, pred, act, total = test(args=self.args, data=data_test, label=label_test,
+                                                      reproduce=self.args.reproduce,
+                                                      subject=sub, fold=idx_fold, contributions=contributions,
+                                                      max_contributions=max_contributions, total=total)
+                    accuracies.append(acc_test)
+                    va.add(acc_test)
+                    preds.extend(pred)
+                    acts.extend(act)
+
+                acc, f1, _ = get_metrics(y_pred=preds, y_true=acts)
+
+                tta.append(acc)
+                ttf.append(f1)
 
         # prepare final report
         mACC = np.mean(tta)
         std = np.std(tta)
 
-        print('Final: test mean ACC:{} std:{}'.format(mACC, std))
+        #print('Final: test mean ACC:{} std:{}'.format(mACC, std))
 
-        return mACC, std, accuracies
+        return mACC, std, accuracies, data_test, label_test
 
 
 
