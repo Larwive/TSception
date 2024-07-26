@@ -15,7 +15,7 @@ if __name__ == '__main__':
     parser.add_argument('--trial-duration', type=int, default=60, help='trial duration in seconds')
     parser.add_argument('--overlap', type=float, default=0)
     parser.add_argument('--sampling-rate', type=int, default=128)
-    parser.add_argument('--input-shape', type=tuple, default=(1, 2, 512))
+    parser.add_argument('--input-shape', type=tuple, default=(1, 4, 512))
     parser.add_argument('--data-format', type=str, default='raw')
     ######## Training Process ########
     parser.add_argument('--random-seed', type=int, default=2021)
@@ -32,6 +32,8 @@ if __name__ == '__main__':
     parser.add_argument('--contribution', action='store_true')
     parser.add_argument('--load-all', action='store_true')
     parser.add_argument('--folds', type=int, default=10)
+
+    parser.add_argument('--channels', type=int, default=0)
     ######## Model Parameters ########
     parser.add_argument('--model', type=str, default='TSception')
     parser.add_argument('--T', type=int, default=15)
@@ -42,7 +44,14 @@ if __name__ == '__main__':
     ######## Reproduce the result using the saved model ######
     parser.add_argument('--reproduce', action='store_true')
     args = parser.parse_args()
-
+    args.input_shape = [
+        (1, 2, 512),
+        (1, 2, 512),
+        (1, 2, 512),
+        (1, 4, 512),
+        (1, 4, 512),
+        (1, 4, 512)
+    ][args.channels]
     sub_to_run = np.arange(args.start_subject, args.start_subject+args.subjects)
 
     pd = PrepareData(args)

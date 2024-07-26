@@ -195,7 +195,7 @@ class CrossValidation:
             va_val = Averager()
             preds, acts = [], []
             preds_trial, acts_trial = [], []
-            kf = KFold(n_splits=fold, shuffle=True)
+            kf = KFold(n_splits=fold, shuffle=True, random_state=5)
             # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
             for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
 
@@ -307,7 +307,7 @@ class CrossValidation:
             pred_vote.append(label)
         return act_trial, pred_vote
 
-    def compare(self, subject=[], fold=10, folding=True, data_test=None, label_test=None):
+    def compare(self, subject=[], fold=10, folding=True, data_test=None, label_test=None, load_all=False):
         """
         this function achieves n-fold cross-validation
         :param subject: how many subject to load
@@ -324,10 +324,14 @@ class CrossValidation:
 
         if folding:
             for sub in subject:
-                data, label = self.load_per_subject(sub)
+                if load_all:
+                    data, label = self.load_all()
+                else:
+                    data, label = self.load_per_subject(sub)
+
                 va = Averager()
                 preds, acts = [], []
-                kf = KFold(n_splits=fold, shuffle=True)
+                kf = KFold(n_splits=fold, shuffle=True, random_state=5)
                 # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
                 for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
                     data_train, label_train, data_test, label_test = self.prepare_data(
@@ -354,7 +358,7 @@ class CrossValidation:
                 va = Averager()
                 preds, acts = [], []
                 # data: (trial, segment, 1, chan, length) here the KFold is trial-wise
-                kf = KFold(n_splits=fold, shuffle=True)
+                kf = KFold(n_splits=fold, shuffle=True, random_state=5)
                 for idx_fold, (index_train, index_test) in enumerate(kf.split(data)):
                     data_train, label_train, data_test, label_test = self.prepare_data(
                         idx_train=index_train, idx_test=index_test, data=data, label=label, no_folding=True)
